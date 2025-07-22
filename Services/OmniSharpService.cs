@@ -89,7 +89,7 @@ public sealed class OmniSharpService : IAsyncDisposable
         var solutionPath = Directory.EnumerateFiles(repoPath, "*.sln").FirstOrDefault()
                          ?? Directory.EnumerateFiles(repoPath, "*.csproj").First();
 
-        var psi = new ProcessStartInfo("/opt/omnisharp/OmniSharp.exe") // correct path/case
+        var psi = new ProcessStartInfo("/opt/omnisharp/OmniSharp") // correct path/case
         {
             Arguments = $"-lsp -s {solutionPath} --stdio",
             RedirectStandardInput = true,
