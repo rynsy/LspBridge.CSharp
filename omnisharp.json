@@ -1,0 +1,8 @@
+{
+  "MsBuild": { "loadProjectsOnDemand": false },
+  "RoslynExtensionsOptions": {
+    "enableAnalyzersSupport": false,
+    "enableEditorConfigSupport": false
+  },
+  "SemanticTokensOptions": { "enable": false }
+}

@@ -1,0 +1,14 @@
+﻿services:
+  lspbridge.csharp:
+    image: lspbridge.csharp
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    volumes:
+      - ../repositories:/repos # SK + LSP share this
+    #      - ./omnisharp.json:/root/.omnisharp/omnisharp.json:ro
+    environment:
+      - PATH=$PATH:/root/.dotnet/tools # omnisharp tool path
+
