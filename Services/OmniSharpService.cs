@@ -9,6 +9,7 @@ using OmniSharp.Extensions.LanguageServer.Protocol;
 using OmniSharp.Extensions.LanguageServer.Protocol.Client.Capabilities;
 using OmniSharp.Extensions.LanguageServer.Protocol.Document;
 using OmniSharp.Extensions.LanguageServer.Protocol.Workspace;
+using Newtonsoft.Json.Linq;
 
 namespace LspBridge.CSharp.Services;
 
@@ -102,13 +103,27 @@ public sealed class OmniSharpService : IAsyncDisposable
         proc.ErrorDataReceived += (_, e) => { if (!string.IsNullOrEmpty(e.Data)) _log.LogWarning(e.Data); };
         proc.BeginErrorReadLine();
 
+        var clientReady = new TaskCompletionSource();        // <-- gate for project load
+        var solutionLoaded = new TaskCompletionSource();
+        ProgressToken? projectsToken = null;
+
         var client = LanguageClient.PreInit(opts =>
         {
             opts.WithInput(proc.StandardOutput.BaseStream)
                 .WithOutput(proc.StandardInput.BaseStream)
-                .WithRootUri(new Uri(repoPath))
+                .WithRootUri(DocumentUri.FromFileSystemPath(Path.GetDirectoryName(solutionPath)!)).WithInitializationOptions(new
+                {
+                    MsBuild = new { LoadProjectsOnDemand = false }
+                })
                 .WithLoggerFactory(
-                    LoggerFactory.Create(b => b.AddConsole().SetMinimumLevel(LogLevel.Warning)));
+                    LoggerFactory.Create(b => b.AddConsole().SetMinimumLevel(LogLevel.Warning)))
+                .WithWorkspaceFolder(
+                    new WorkspaceFolder
+                    {
+                        Uri = DocumentUri.FromFileSystemPath(Path.GetDirectoryName(solutionPath)!),
+                        Name = Path.GetFileName(repoPath)
+                    }
+                );
 
             // Global diagnostics handler – fulfil awaiters if someone is waiting
             opts.OnPublishDiagnostics((diag, _) =>
@@ -117,9 +132,31 @@ public sealed class OmniSharpService : IAsyncDisposable
                     source.TrySetResult(diag);
                 return Task.CompletedTask;
             });
+
+
+            opts.OnProgress(p =>
+            {
+                var kind = p.Value?["kind"]?.Value<string>();
+                var title = p.Value?["kind"]?.Value<string>();
+                switch (kind)
+                {
+                    // 1️⃣ start of the MSBuild load
+                    case "begin" when title?.StartsWith("Projects", StringComparison.Ordinal) == true:
+                        projectsToken = p.Token;                       // remember the token we care about
+                        break;
+
+                    // 2️⃣ end of that same progress
+                    case "end" when projectsToken != null && Equals(p.Token, projectsToken):
+                        solutionLoaded.TrySetResult();
+                        break;
+                }
+
+                return Task.CompletedTask;   //  <- don’t forget the async contract
+            });
         });
 
         await client.Initialize(CancellationToken.None);
+        await solutionLoaded.Task;
         _log.LogInformation("OmniSharp ready for {Repo}", repoPath);
         return client;
     }
